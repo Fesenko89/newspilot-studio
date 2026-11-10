@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Конструктор аналітики</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f2f3f5);
+    --text: var(--tg-theme-text-color, #1a1a1a);
+    --hint: var(--tg-theme-hint-color, #7d7f85);
+    --link: var(--tg-theme-link-color, #2a6fdb);
+    --accent: var(--tg-theme-button-color, #2a6fdb);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --danger: var(--tg-theme-destructive-text-color, #d93a3a);
+    --warn-bg: color-mix(in srgb, #e8a23a 18%, var(--bg));
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: var(--tg-theme-bg-color, #17191d); --bg2: var(--tg-theme-secondary-bg-color, #0f1013);
+      --text: var(--tg-theme-text-color, #eceef2); --hint: var(--tg-theme-hint-color, #8b8f98);
+    }
+  }
+  :root[data-theme="dark"] { --bg: var(--tg-theme-bg-color, #17191d); --bg2: var(--tg-theme-secondary-bg-color, #0f1013);
+    --text: var(--tg-theme-text-color, #eceef2); --hint: var(--tg-theme-hint-color, #8b8f98); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg2); color: var(--text);
+    font: 15px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 96px; }
+  h1 { font-size: 20px; margin: 4px 0 12px; }
+  section { background: var(--bg); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+  h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--hint); margin: 0 0 10px; }
+  label.field { display: block; font-size: 13px; color: var(--hint); margin: 10px 0 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid color-mix(in srgb, var(--hint) 40%, transparent); background: transparent; color: var(--text);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .chip:disabled { opacity: .4; cursor: default; }
+  .segmented { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--bg2); border-radius: 10px; padding: 3px; }
+  .segmented button { border: 0; background: transparent; color: var(--text); font: inherit; font-size: 14px; padding: 7px 4px; border-radius: 8px; cursor: pointer; }
+  .segmented button[aria-pressed="true"] { background: var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+  input[type=text], textarea, select { width: 100%; border: 1px solid color-mix(in srgb, var(--hint) 35%, transparent); border-radius: 10px;
+    background: var(--bg); color: var(--text); font: inherit; padding: 9px 11px; }
+  textarea { min-height: 150px; resize: vertical; }
+  .figure { background: #fff; color: #1a1a1a; border-radius: 8px; padding: 12px 10px 8px; }
+  .figure .ftitle { font-size: 16px; font-weight: 600; line-height: 1.25; }
+  .figure .fsub { font-size: 12px; color: #6b6b6b; margin: 2px 0 6px; }
+  .figure .fnote { font-size: 11px; color: #6b6b6b; margin-top: 4px; }
+  .canvas-box { position: relative; width: 100%; aspect-ratio: 9 / 5.6; }
+  .error { color: var(--danger); font-size: 14px; margin-top: 8px; }
+  .hint { color: var(--hint); font-size: 13px; }
+  details summary { cursor: pointer; color: var(--link); font-size: 14px; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--bg2); vertical-align: top; }
+  th { color: var(--hint); font-weight: 500; }
+  td.num { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+  a { color: var(--link); }
+  .finding { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--bg2); }
+  .finding:last-child { border-bottom: 0; }
+  .finding input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+  .score { flex: none; font-size: 12px; color: var(--hint); min-width: 28px; text-align: right; margin-top: 2px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .btn { border: 0; border-radius: 10px; padding: 9px 14px; font: inherit; font-size: 14px; cursor: pointer; background: var(--bg2); color: var(--text); }
+  .btn.primary { background: var(--accent); color: var(--accent-text); width: 100%; padding: 12px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .counter { font-size: 13px; color: var(--hint); margin-top: 6px; }
+  .counter.over { color: var(--danger); font-weight: 600; }
+  .switch { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; margin-top: 10px; }
+  .switch input { margin-top: 3px; }
+  .note { background: var(--warn-bg); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--bg2); padding: 8px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Конструктор аналітики</h1>
+  <div id="loadError" class="error" hidden></div>
+
+  <div id="ui" hidden>
+    <section>
+      <h2>Дані</h2>
+      <div id="seriesBox" hidden>
+        <label class="field" for="series">Ряд даних</label>
+        <select id="series"></select>
+      </div>
+      <label class="field">Вигляд</label>
+      <div class="segmented" id="views" role="group" aria-label="Вигляд графіка"></div>
+      <label class="field">Показники <span class="hint" id="indicatorsHint"></span></label>
+      <div class="chips" id="indicators"></div>
+      <label class="field">Роки <span class="hint">(нічого не вибрано — усі)</span></label>
+      <div class="chips" id="years"></div>
+    </section>
+
+    <section>
+      <h2>Графік</h2>
+      <div class="figure">
+        <div class="ftitle" id="ftitle"></div>
+        <div class="fsub" id="fsub"></div>
+        <div class="canvas-box"><canvas id="canvas" aria-label="Графік"></canvas></div>
+        <div class="fnote" id="fnote"></div>
+      </div>
+      <div class="error" id="chartError" hidden></div>
+      <div class="hint" style="margin-top:6px">Остаточну картинку намалює бот — у картці буде саме та, що піде в канал.</div>
+      <label class="field" for="title">Заголовок графіка</label>
+      <input type="text" id="title" maxlength="90" placeholder="автоматично">
+      <label class="field" for="subtitle">Підзаголовок</label>
+      <input type="text" id="subtitle" maxlength="120" placeholder="автоматично">
+      <details>
+        <summary>Точки на графіку й джерела</summary>
+        <table><thead><tr><th>Показник</th><th>Період</th><th>Значення</th><th>Джерело</th></tr></thead>
+          <tbody id="points"></tbody></table>
+      </details>
+    </section>
+
+    <section>
+      <h2>Висновки програми</h2>
+      <div class="hint" id="findingsHint">Пораховано з усіх даних ряду. Позначте потрібні.</div>
+      <div id="findings"></div>
+      <div class="row"><button class="btn" id="addFindings" disabled>Вставити в текст</button></div>
+      <label class="switch"><input type="checkbox" id="ai"> <span>AI напише вступ і заголовок з позначених висновків (~1¢). Числа, яких немає в даних, бот прибере.</span></label>
+    </section>
+
+    <section>
+      <h2>Текст поста</h2>
+      <label class="field" for="headline">Заголовок</label>
+      <input type="text" id="headline" maxlength="200" placeholder="Головна цифра в заголовку">
+      <label class="field" for="body">Текст</label>
+      <textarea id="body" placeholder="Що сталося і що це означає. Числа — з графіка чи висновків."></textarea>
+      <label class="switch"><input type="checkbox" id="withSources" checked> <span>Рядок «Дані: …» з посиланнями на джерела</span></label>
+      <div class="counter" id="counter"></div>
+      <div class="hint" style="margin-top:6px">Числа в тексті бот звірить із даними й покаже попередження під карткою.</div>
+    </section>
+
+    <section>
+      <button class="btn primary" id="send">Надіслати боту</button>
+      <div class="hint" style="margin-top:8px">Прийде картка з графіком і текстом: ✅ — одразу в канал, ✏️ — виправити, ❌ — відхилити.
+        Надсилання працює, якщо конструктор відкрито кнопкою «📈 Аналітика» внизу чату з ботом.</div>
+      <pre id="payload" hidden></pre>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const inTelegram = !!(tg && tg.platform && tg.platform !== "unknown");
+  const $ = (id) => document.getElementById(id);
+  const STORE = "studio-draft-v2";
+  const LIMIT_BYTES = 4096, CAPTION = 1024, CARD_NOTE = 24;
+  const UKR = "#1f4e8c", FOREIGN = "#c9d3e0", INK = "#1a1a1a", MUTED = "#6b6b6b", ACCENT = "#d9822b";
+  const PALETTE = [UKR, ACCENT, "#5b8c5a", "#8a6fb3"];
+  const MONTHS = ["січ", "лют", "бер", "кві", "тра", "чер", "лип", "сер", "вер", "жов", "лис", "гру"];
+  const SHARE = "ukrainian_share", MAX_INDICATORS = 4, DAY = 86400000;
+
+  const state = { data: null, series: null, view: null, indicators: [], years: [], chosen: new Set(), chart: null, plot: null };
+
+  // ---------- дати й формат (як у reports/codification.py) ----------
+  const toDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const pad = (n) => String(n).padStart(2, "0");
+  const ddmm = (d) => `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}`;
+  const dayOfYear = (d) => Math.round((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / DAY) + 1;
+  const days = (a, b) => Math.round((a - b) / DAY);
+  const fmt = (v, approx) => (approx ? "≈" : "") + String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  function periodLabel(year, d) {
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const month = d.getUTCMonth() + 1;
+    if (d.getUTCDate() === last) {
+      if (month === 6) return `за перше півріччя ${year}`;
+      if (month === 12) return `за ${year} рік`;
+      return `за ${month} міс. ${year}`;
+    }
+    return `з початку ${year} (станом на ${ddmm(d)})`;
+  }
+  function sameDayLastYear(d) {
+    const r = new Date(Date.UTC(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate()));
+    return r.getUTCMonth() === d.getUTCMonth() ? r : new Date(Date.UTC(d.getUTCFullYear() - 1, d.getUTCMonth(), 28));
+  }
+
+  // ---------- вибірка ----------
+  const pick = (pts, cat, scope, year) => pts.filter((p) => p.category === cat && p.scope === scope && (year == null || p.year === year))
+    .sort((a, b) => a.date - b.date);
+  const yearTotal = (pts, cat, year) => { const f = pick(pts, cat, "year", year); return f[f.length - 1] || null; };
+  function near(pts, cat, scope, day, tol = 7) {
+    let best = null;
+    for (const p of pts) {
+      if (p.category === cat && p.scope === scope && Math.abs(days(p.date, day)) <= tol) {
+        if (!best || Math.abs(days(p.date, day)) < Math.abs(days(best.date, day))) best = p;
+      }
+    }
+    return best;
+  }
+  const availableYears = (pts, inds) => [...new Set(pts.filter((p) => inds.includes(p.category) && (p.scope === "year" || p.scope === "ytd")).map((p) => p.year))].sort();
+
+  const info = () => state.data.catalog.find((s) => s.id === state.series);
+  const label = (id) => (info().indicators.find((i) => i.id === id) || { label: id }).label;
+  const seriesData = () => state.data.series[state.series];
+  const item = (p, note = null) => ({ value: p ? p.value : null, approx: !!(p && p.approx), note });
+  function row(p, period) {
+    return { indicator: label(p.category), period, value: fmt(p.value, p.approx) + (p.category === SHARE ? "%" : ""),
+             as_of: p.as_of, source_name: p.source_name, source_url: p.source_url, quote: p.quote };
+  }
+
+  // ---------- вигляди (ті самі правила, що studio/data.py) ----------
+  function yearsView(pts, spec) {
+    const inds = spec.indicators;
+    const years = availableYears(pts, inds).filter((y) => !spec.years.length || spec.years.includes(y));
+    const labels = [], sets = Object.fromEntries(inds.map((i) => [i, []])), rows = [];
+    let partial = false;
+    for (const year of years) {
+      const dates = [], values = {};
+      for (const ind of inds) {
+        const total = yearTotal(pts, ind, year);
+        if (total) { values[ind] = [total, null]; rows.push(row(total, `за ${year} рік`)); continue; }
+        const latest = pick(pts, ind, "ytd", year);
+        if (latest.length) {
+          const p = latest[latest.length - 1];
+          values[ind] = [p, `до ${ddmm(p.date)}`]; dates.push(p.as_of); rows.push(row(p, periodLabel(year, p.date)));
+        } else values[ind] = [null, null];
+      }
+      if (!Object.values(values).some(([p]) => p)) continue;
+      const sameDate = new Set(dates).size === 1 && Object.values(values).every(([p, note]) => !p || note);
+      labels.push(sameDate ? [String(year), `(до ${ddmm(toDate(dates[0]))})`] : String(year));
+      if (dates.length) partial = true;
+      for (const ind of inds) sets[ind].push(item(values[ind][0], sameDate ? null : values[ind][1]));
+    }
+    if (!labels.length) throw new Error("для цих показників немає даних по роках");
+    return { kind: "bar", title: spec.title || `${info().title} по роках`,
+      subtitle: spec.subtitle || inds.map(label).join(", ") + (partial ? "; поточний рік — з початку року" : ""),
+      labels, datasets: inds.map((i) => ({ label: label(i), values: sets[i] })), rows, percent: inds.length === 1 && inds[0] === SHARE };
+  }
+
+  function ytdView(pts, spec) {
+    const inds = spec.indicators;
+    let years = availableYears(pts, inds).filter((y) => inds.some((i) => pick(pts, i, "ytd", y).length));
+    if (spec.years.length) years = years.filter((y) => spec.years.includes(y));
+    if (!years.length) throw new Error("для цих показників немає даних «з початку року»");
+    const cumulative = !inds.includes(SHARE), lines = [], rows = [];
+    const last = years[years.length - 1];
+    const pairs = inds.length === 1 ? years.slice(-3).map((y) => [inds[0], y]) : inds.map((i) => [i, last]);
+    for (const [ind, year] of pairs) {
+      const data = pick(pts, ind, "ytd", year);
+      if (!data.length) continue;
+      let xs = data.map((p) => dayOfYear(p.date)), values = data.map((p) => item(p));
+      const origin = cumulative && xs[0] > 1;
+      if (origin) { xs = [0, ...xs]; values = [item({ value: 0, approx: false }), ...values]; }
+      lines.push({ label: inds.length === 1 ? String(year) : label(ind), xs, values, origin, current: year === last });
+      data.forEach((p) => rows.push(row(p, periodLabel(year, p.date))));
+    }
+    if (!lines.length) throw new Error("для цих показників немає даних «з початку року»");
+    const single = inds.length === 1;
+    return { kind: "line",
+      title: spec.title || (single ? `${label(inds[0])}: з початку року, ${lines.map((l) => l.label).reverse().join(" проти ")}`
+                                   : `${info().title} з початку ${last} року`),
+      subtitle: spec.subtitle || (cumulative ? "наростаючим підсумком" : "частка на дату звіту"),
+      datasets: lines, rows, percent: !cumulative };
+  }
+
+  function categorySnapshot(pts, types, year) {
+    const cats = Object.keys(types);
+    const dates = [...new Set(pts.filter((p) => p.year === year && p.scope === "ytd" && cats.includes(p.category)).map((p) => p.as_of))].sort().reverse();
+    let fallback = null;
+    for (const iso of dates) {
+      const day = toDate(iso), current = {}, previous = {};
+      cats.forEach((c) => { const p = near(pts, c, "ytd", day, 0); if (p && p.year === year) current[c] = p; });
+      if (Object.keys(current).length < 3) continue;
+      cats.forEach((c) => { const p = near(pts, c, "ytd", sameDayLastYear(day), 3); if (p && p.year === year - 1) previous[c] = p; });
+      if (Object.keys(previous).length >= 2) return [day, current, previous];
+      fallback = fallback || [day, current, {}];
+    }
+    return fallback;
+  }
+
+  function typesView(pts, spec) {
+    const types = seriesData().types;
+    let years = [...new Set(pts.filter((p) => types[p.category] && p.scope === "ytd").map((p) => p.year))].sort();
+    if (spec.years.length) years = years.filter((y) => spec.years.includes(y));
+    let snapshot = null, year = null;
+    for (const y of years.slice().reverse()) { snapshot = categorySnapshot(pts, types, y); if (snapshot) { year = y; break; } }
+    if (!snapshot) throw new Error("замало даних за типами на одну дату");
+    const [day, current, previous] = snapshot;
+    const order = Object.keys(current).sort((a, b) => current[a].value - current[b].value);
+    const hasPrev = Object.keys(previous).length > 0;
+    const rows = order.slice().reverse().map((c) => row(current[c], periodLabel(year, day)))
+      .concat(order.slice().reverse().filter((c) => previous[c]).map((c) => row(previous[c], periodLabel(year - 1, previous[c].date))));
+    const datasets = [{ label: String(year), values: order.map((c) => item(current[c])) }];
+    if (hasPrev) datasets.push({ label: String(year - 1), values: order.map((c) => previous[c] ? item(previous[c]) : item(null, "торік даних немає")) });
+    return { kind: "hbar", title: spec.title || `${info().title}: за типами`,
+      subtitle: spec.subtitle || (hasPrev ? `${periodLabel(year, day)} проти того самого періоду ${year - 1}` : periodLabel(year, day)),
+      labels: order.map((c) => types[c]), datasets, rows, percent: false };
+  }
+
+  function buildChart() {
+    const spec = currentSpec();
+    if (spec.view !== "types") {
+      if (!spec.indicators.length) throw new Error("виберіть хоча б один показник");
+      if (spec.indicators.length > MAX_INDICATORS) throw new Error(`не більше ${MAX_INDICATORS} показників на одному графіку`);
+      if (spec.indicators.includes(SHARE) && spec.indicators.length > 1) throw new Error("частку (%) не можна показувати на одному графіку з кількістю — виберіть її окремо");
+    }
+    const pts = seriesData().points;
+    const chart = { years: yearsView, ytd: ytdView, types: typesView }[spec.view](pts, spec);
+    const sources = [];
+    chart.rows.slice().sort((a, b) => b.as_of.localeCompare(a.as_of)).forEach((r) => {
+      if (r.source_url && !sources.some((s) => s.url === r.source_url)) sources.push({ name: r.source_name, url: r.source_url });
+    });
+    chart.sources = sources;
+    chart.as_of = chart.rows.map((r) => r.as_of).sort().pop();
+    return chart;
+  }
+
+  // ---------- малювання ----------
+  const valueText = (v, percent) => fmt(v.value, v.approx) + (percent ? "%" : "");
+  const labelsPlugin = {
+    id: "values",
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart, spec = chart.$studio;
+      if (!spec || spec.kind === "line") return;
+      ctx.save();
+      chart.data.datasets.forEach((ds, di) => {
+        chart.getDatasetMeta(di).data.forEach((bar, i) => {
+          const v = ds.items[i];
+          if (!v) return;
+          const text = v.value == null ? (v.note || "") : valueText(v, spec.percent);
+          ctx.fillStyle = di === 0 || spec.kind === "bar" ? INK : MUTED;
+          if (spec.kind === "hbar") {
+            ctx.font = `${di === 0 ? 600 : 400} 12px system-ui, sans-serif`;
+            ctx.textAlign = "left"; ctx.textBaseline = "middle";
+            ctx.fillText(text, (v.value == null ? chart.scales.x.left : bar.x) + 4, bar.y);
+          } else {
+            ctx.font = `600 ${chart.data.datasets.length > 2 ? 10 : 12}px system-ui, sans-serif`;
+            ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+            ctx.fillText(text, bar.x, bar.y - 3);
+            if (v.note) { ctx.font = "10px system-ui, sans-serif"; ctx.fillStyle = MUTED; ctx.fillText(v.note, bar.x, bar.y - 17); }
+          }
+        });
+      });
+      ctx.restore();
+    },
+  };
+
+  function draw(chart) {
+    $("ftitle").textContent = chart.title;
+    $("fsub").textContent = chart.subtitle;
+    $("fnote").textContent = `Дані: ${info().source} · «Технології України»`;
+    if (state.plot) state.plot.destroy();
+    const ctx = $("canvas");
+    const common = { responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: chart.datasets.length > 1, position: "top", align: "start", labels: { boxWidth: 14, color: INK } },
+                 tooltip: { enabled: true } } };
+    let config;
+    if (chart.kind === "line") {
+      config = { type: "line", data: { datasets: chart.datasets.map((l, i) => {
+          const yearsOnly = chart.datasets.every((d) => /^\d+$/.test(d.label));
+          const color = yearsOnly && !l.current ? "#8a9bb5" : PALETTE[i % PALETTE.length];
+          return { label: l.label, data: l.xs.map((x, j) => ({ x, y: l.values[j].value })), borderColor: color, backgroundColor: color,
+            borderWidth: 2.5, pointRadius: 3, borderDash: yearsOnly && !l.current ? [6, 4] : [],
+            segment: { borderDash: (c) => (l.origin && c.p0DataIndex === 0 ? [2, 3] : undefined) } };
+        }) },
+        options: { ...common, scales: {
+          x: { type: "linear", min: 0, max: 366, grid: { display: false },
+               afterBuildTicks: (s) => { s.ticks = MONTHS.map((_, m) => ({ value: dayOfYear(new Date(Date.UTC(2025, m, 1))) })); },
+               ticks: { color: INK, autoSkip: false, maxRotation: 0, font: { size: 10 },
+                        callback: (v) => MONTHS[MONTHS.findIndex((_, m) => dayOfYear(new Date(Date.UTC(2025, m, 1))) === v)] } },
+          y: { beginAtZero: true, ticks: { color: MUTED }, grid: { color: "#eeeeee" } } } } };
+    } else {
+      const horizontal = chart.kind === "hbar";
+      const colors = chart.datasets.length === 2 ? [UKR, FOREIGN] : PALETTE;
+      config = { type: "bar", data: { labels: chart.labels, datasets: chart.datasets.map((d, i) => ({
+          label: d.label, data: d.values.map((v) => v.value || 0), items: d.values,
+          backgroundColor: colors[i % colors.length], borderRadius: 2, categoryPercentage: 0.75, barPercentage: 0.9 })) },
+        options: { ...common, indexAxis: horizontal ? "y" : "x",
+          layout: { padding: horizontal ? { right: 60 } : { top: 26 } },
+          scales: horizontal
+            ? { x: { display: false, beginAtZero: true }, y: { grid: { display: false }, ticks: { color: INK } } }
+            : { y: { display: false, beginAtZero: true, grace: "12%" }, x: { grid: { display: false }, ticks: { color: INK, maxRotation: 0, autoSkip: false, font: { size: 11 } } } } } };
+    }
+    config.plugins = [labelsPlugin];
+    state.plot = new Chart(ctx, config);
+    state.plot.$studio = chart;
+    state.plot.update();
+  }
+
+  // ---------- керування ----------
+  function currentSpec() {
+    return { series: state.series, view: state.view, indicators: state.indicators.slice(), years: state.years.slice(),
+             title: $("title").value.trim(), subtitle: $("subtitle").value.trim() };
+  }
+  const el = (tag, attrs = {}, text) => { const n = document.createElement(tag); Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v)); if (text !== undefined) n.textContent = text; return n; };
+  const toggle = (list, v) => { const i = list.indexOf(v); i >= 0 ? list.splice(i, 1) : list.push(v); };
+  const haptic = () => { try { tg.HapticFeedback.selectionChanged(); } catch (e) {} };
+
+  function chipButton(text, pressed, onClick, disabled) {
+    const b = el("button", { type: "button", class: "chip", "aria-pressed": String(pressed) }, text);
+    b.disabled = !!disabled; b.addEventListener("click", () => { haptic(); onClick(); });
+    return b;
+  }
+
+  function renderControls() {
+    const s = info();
+    $("seriesBox").hidden = state.data.catalog.length < 2;
+    $("series").replaceChildren(...state.data.catalog.map((c) => { const o = el("option", { value: c.id }, c.title); o.selected = c.id === state.series; return o; }));
+    $("views").replaceChildren(...s.views.map((v) => {
+      const b = el("button", { type: "button", "aria-pressed": String(v.id === state.view) }, v.label);
+      b.addEventListener("click", () => { state.view = v.id; haptic(); changed(); });
+      return b;
+    }));
+    const typesView = state.view === "types";
+    $("indicatorsHint").textContent = typesView ? "— у вигляді «За типами» не потрібні" : "(до 4; кілька — порівняння)";
+    $("indicators").replaceChildren(...s.indicators.map((i) => chipButton(i.label, state.indicators.includes(i.id),
+      () => { toggle(state.indicators, i.id); changed(); }, typesView)));
+    const years = availableYears(seriesData().points, s.indicators.map((i) => i.id));
+    $("years").replaceChildren(...years.map((y) => chipButton(String(y), state.years.includes(y), () => { toggle(state.years, y); changed(); })));
+  }
+
+  function renderPoints(chart) {
+    $("points").replaceChildren(...chart.rows.map((r) => {
+      const tr = el("tr");
+      tr.append(el("td", {}, r.indicator), el("td", {}, r.period), el("td", { class: "num" }, r.value));
+      const td = el("td");
+      if (r.source_url) td.append(el("a", { href: r.source_url, target: "_blank", rel: "noopener", title: r.quote }, r.source_name || "джерело"));
+      tr.append(td);
+      return tr;
+    }));
+  }
+
+  function renderFindings() {
+    const findings = seriesData().findings.concat(seriesData().figures.map((t) => ({ text: t, score: 0 })));
+    $("findings").replaceChildren(...findings.map((f) => {
+      const rowEl = el("label", { class: "finding" });
+      const box = el("input", { type: "checkbox" });
+      box.checked = state.chosen.has(f.text);
+      box.addEventListener("change", () => { box.checked ? state.chosen.add(f.text) : state.chosen.delete(f.text); updateFooter(); });
+      rowEl.append(box, el("span", {}, f.text), el("span", { class: "score" }, f.score ? String(f.score) : ""));
+      return rowEl;
+    }));
+    $("findingsHint").hidden = !findings.length;
+    if (!findings.length) $("findings").append(el("div", { class: "hint" }, "Для цього ряду висновків програми немає."));
+  }
+
+  function changed() {
+    renderControls();
+    try {
+      state.chart = buildChart();
+      $("chartError").hidden = true;
+      $("title").placeholder = state.chart.title; $("subtitle").placeholder = state.chart.subtitle;
+      draw(state.chart); renderPoints(state.chart);
+    } catch (error) {
+      state.chart = null;
+      $("chartError").textContent = error.message; $("chartError").hidden = false;
+    }
+    updateFooter();
+  }
+
+  // ---------- чернетка ----------
+  function payload() {
+    return { v: 1, spec: currentSpec(), headline: $("headline").value.trim(), body: $("body").value.trim(),
+             with_sources: $("withSources").checked, ai: $("ai").checked, findings: [...state.chosen] };
+  }
+  const bytes = (s) => new TextEncoder().encode(s).length;
+
+  function updateFooter() {
+    save();
+    const p = payload();
+    let length = 2 + p.headline.length + (p.body ? 2 + p.body.length : 0) + CARD_NOTE;
+    if (p.with_sources && state.chart && state.chart.sources.length) {
+      const names = state.chart.sources.slice(0, 3).map((s, i) => (i ? String(i + 1) : s.name || "джерело")).join(", ");
+      length += `\n\nДані: ${names} (станом на 00.00.0000)`.length;
+    }
+    if (p.ai && state.chosen.size) length += 350;
+    const size = bytes(JSON.stringify(p));
+    const counter = $("counter");
+    const over = length > CAPTION;
+    counter.textContent = `≈${length} / ${CAPTION} символів` + (p.ai && state.chosen.size ? " (з урахуванням AI-вступу)" : "") +
+      (over ? " — задовго: графік і текст прийдуть окремо" : " — уміщається в підпис до графіка") +
+      (size > LIMIT_BYTES ? ` · чернетка завелика (${size} / ${LIMIT_BYTES} байт) — скоротіть текст або висновки` : "");
+    counter.classList.toggle("over", over || size > LIMIT_BYTES);
+    $("addFindings").disabled = !state.chosen.size;
+    const ok = state.chart && (p.headline || state.chosen.size) && size <= LIMIT_BYTES;
+    $("send").disabled = !ok;
+    if (inTelegram && tg.MainButton) { ok ? tg.MainButton.enable() : tg.MainButton.disable(); }
+  }
+
+  function load() { try { return JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { return null; } }
+  function save() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({ series: state.series, view: state.view, indicators: state.indicators, years: state.years,
+        title: $("title").value, subtitle: $("subtitle").value, headline: $("headline").value, body: $("body").value,
+        withSources: $("withSources").checked, ai: $("ai").checked, chosen: [...state.chosen] }));
+    } catch (e) { /* без сховища чернетка не зберігається між відкриттями */ }
+  }
+
+  function send() {
+    const p = payload();
+    if (!state.chart) return;
+    const text = JSON.stringify(p);
+    if (inTelegram) {
+      try { tg.sendData(text); }
+      catch (error) { tg.showAlert("Не вдалося надіслати: відкрийте конструктор кнопкою «📈 Аналітика» внизу чату з ботом (/studio)."); }
+    } else {
+      $("payload").textContent = "Поза Telegram — ось що отримав би бот:\n" + JSON.stringify(p, null, 2);
+      $("payload").hidden = false;
+    }
+  }
+
+  $("addFindings").addEventListener("click", () => {
+    const lines = [...state.chosen].map((t) => t.replace(/\.?$/, "."));
+    const body = $("body");
+    body.value = (body.value.trim() ? body.value.trim() + "\n\n" : "") + lines.join(" ");
+    if (!$("headline").value.trim()) $("headline").value = lines[0].replace(/\.$/, "");
+    updateFooter();
+  });
+  ["headline", "body"].forEach((id) => $(id).addEventListener("input", updateFooter));
+  ["withSources", "ai"].forEach((id) => $(id).addEventListener("change", updateFooter));
+  let timer;
+  ["title", "subtitle"].forEach((id) => $(id).addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(changed, 400); }));
+  $("series").addEventListener("change", (e) => {
+    state.series = e.target.value; const s = info();
+    state.view = s.default.view; state.indicators = [...s.default.indicators]; state.years = []; state.chosen.clear();
+    renderFindings(); changed();
+  });
+  $("send").addEventListener("click", send);
+
+  async function start() {
+    if (tg) { try { tg.ready(); tg.expand(); if (tg.colorScheme) document.documentElement.dataset.theme = tg.colorScheme; } catch (e) {} }
+    try {
+      const response = await fetch("data.json?t=" + Date.now(), { cache: "no-store" });
+      if (!response.ok) throw new Error("дані ще не викладено (" + response.status + ")");
+      state.data = await response.json();
+    } catch (error) {
+      $("loadError").textContent = "Не вдалося завантажити дані: " + error.message;
+      $("loadError").hidden = false;
+      return;
+    }
+    for (const s of Object.values(state.data.series)) s.points.forEach((p) => { p.date = toDate(p.as_of); });
+
+    const saved = load();
+    const first = state.data.catalog.find((s) => saved && s.id === saved.series) || state.data.catalog[0];
+    state.series = first.id;
+    state.view = (saved && saved.view) || first.default.view;
+    state.indicators = (saved && saved.indicators) || [...first.default.indicators];
+    state.years = (saved && saved.years) || [];
+    if (saved) {
+      $("title").value = saved.title || ""; $("subtitle").value = saved.subtitle || "";
+      $("headline").value = saved.headline || ""; $("body").value = saved.body || "";
+      $("withSources").checked = saved.withSources !== false; $("ai").checked = !!saved.ai;
+      (saved.chosen || []).forEach((t) => state.chosen.add(t));
+    }
+    $("ui").hidden = false;
+    if (inTelegram && tg.MainButton) {
+      $("send").hidden = true;
+      tg.MainButton.setText("Надіслати боту");
+      tg.MainButton.onClick(send);
+      tg.MainButton.show();
+    }
+    renderFindings();
+    changed();
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
