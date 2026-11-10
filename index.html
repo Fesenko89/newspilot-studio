@@ -72,6 +72,14 @@
   .switch { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; margin-top: 10px; }
   .switch input { margin-top: 3px; }
   .note { background: var(--warn-bg); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+  .idea { border-bottom: 1px solid var(--bg2); padding: 10px 0; }
+  .idea:last-child { border-bottom: 0; }
+  .idea .ititle { font-weight: 600; }
+  .idea .iwhy { font-size: 14px; margin: 3px 0; }
+  .idea .ifacts { font-size: 13px; color: var(--hint); margin: 4px 0 6px; padding-left: 16px; }
+  .idea .ifacts li { margin: 2px 0; }
+  .idea .ikind { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: .04em; }
+  .banner { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
   pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--bg2); padding: 8px; border-radius: 8px; }
 </style>
 </head>
@@ -81,12 +89,25 @@
   <div id="loadError" class="error" hidden></div>
 
   <div id="ui" hidden>
-    <section>
+    <section id="ideasBox" hidden>
+      <h2>Пропозиції програми</h2>
+      <div class="hint">Програма сама порахувала, що зараз цікаво — в офіційних даних і в постах каналу.
+        Візьміть пропозицію або зберіть графік нижче самі.</div>
+      <div id="ideas"></div>
+    </section>
+
+    <section id="ideaBanner" hidden>
+      <div class="banner"><div><div class="hint">Пропозиція</div><b id="ideaTitle"></b></div>
+        <button class="btn" id="ideaCancel" type="button">✕ Скасувати</button></div>
+    </section>
+
+    <section id="seriesBox" hidden>
+      <h2>Тема</h2>
+      <div class="segmented" id="series" role="group" aria-label="Тема аналітики"></div>
+    </section>
+
+    <section id="dataBox">
       <h2>Дані</h2>
-      <div id="seriesBox" hidden>
-        <label class="field" for="series">Ряд даних</label>
-        <select id="series"></select>
-      </div>
       <label class="field">Вигляд</label>
       <div class="segmented" id="views" role="group" aria-label="Вигляд графіка"></div>
       <label class="field">Показники <span class="hint" id="indicatorsHint"></span></label>
@@ -116,7 +137,7 @@
       </details>
     </section>
 
-    <section>
+    <section id="findingsBox">
       <h2>Висновки програми</h2>
       <div class="hint" id="findingsHint">Пораховано з усіх даних ряду. Позначте потрібні.</div>
       <div id="findings"></div>
@@ -156,7 +177,64 @@
   const MONTHS = ["січ", "лют", "бер", "кві", "тра", "чер", "лип", "сер", "вер", "жов", "лис", "гру"];
   const SHARE = "ukrainian_share", MAX_INDICATORS = 4, DAY = 86400000;
 
-  const state = { data: null, series: null, view: null, indicators: [], years: [], chosen: new Set(), chart: null, plot: null };
+  const state = { data: null, series: null, view: null, indicators: [], years: [], chosen: new Set(), chart: null, plot: null,
+                  idea: null };
+  // Пропозиція з даних каналу (без spec) — готовий графік і текст від програми; офіційна — налаштування конструктора
+  const channelIdea = () => state.idea && !state.idea.spec;
+
+  const KINDS = { official: "офіційні дані", trend: "тема тижня", company: "компанія", metric: "цифри змінилися",
+                  promise: "обіцянка", leaders: "рейтинг", quiet: "давно не писали" };
+  function renderIdeas() {
+    const ideas = (state.data.ideas || []);
+    $("ideasBox").hidden = !ideas.length;
+    $("ideas").replaceChildren(...ideas.map((idea) => {
+      const card = el("div", { class: "idea" });
+      card.append(el("div", { class: "ikind" }, `${KINDS[idea.kind] || idea.kind} · бал ${idea.score}`),
+                  el("div", { class: "ititle" }, idea.title), el("div", { class: "iwhy" }, idea.why));
+      const facts = (idea.facts || []).slice(0, 3);
+      if (facts.length && idea.kind !== "official") {
+        const list = el("ul", { class: "ifacts" });
+        facts.forEach((f) => {
+          const li = el("li", {}, f.text + " ");
+          if (f.link) li.append(el("a", { href: f.link, target: "_blank", rel: "noopener" }, "пост"));
+          list.append(li);
+        });
+        card.append(list);
+      }
+      const take = el("button", { class: "btn", type: "button" }, idea.kind === "quiet" ? "Зрозуміло" : "Взяти");
+      take.addEventListener("click", () => { haptic(); idea.kind === "quiet" ? card.remove() : takeIdea(idea); });
+      card.append(take);
+      return card;
+    }));
+  }
+
+  function takeIdea(idea) {
+    if (idea.spec) {
+      selectSeries(idea.spec.series);
+      state.view = idea.spec.view; state.indicators = [...idea.spec.indicators]; state.years = [...(idea.spec.years || [])];
+      state.chosen = new Set(idea.findings || []);
+      renderFindings();
+    } else {
+      $("headline").value = idea.headline || ""; $("body").value = idea.body || "";
+      $("title").value = ""; $("subtitle").value = "";
+    }
+    state.idea = idea;
+    changed();
+    $("ideaBanner").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelIdea() {
+    const wasChannel = channelIdea();
+    state.idea = null;
+    if (wasChannel) { $("headline").value = ""; $("body").value = ""; }
+    changed();
+  }
+
+  function ideaChart(idea) {
+    if (idea.chart) return { ...idea.chart, title: $("title").value.trim() || idea.chart.title,
+                             subtitle: $("subtitle").value.trim() || idea.chart.subtitle };
+    return { kind: "none", title: idea.title, subtitle: "текстовий пост без графіка", labels: [], datasets: [], rows: [], sources: [] };
+  }
 
   // ---------- дати й формат (як у reports/codification.py) ----------
   const toDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
@@ -193,7 +271,7 @@
     }
     return best;
   }
-  const availableYears = (pts, inds) => [...new Set(pts.filter((p) => inds.includes(p.category) && (p.scope === "year" || p.scope === "ytd")).map((p) => p.year))].sort();
+  const availableYears = (pts, inds) => [...new Set(pts.filter((p) => inds.includes(p.category) && (p.scope === "year" || p.scope === "ytd" || p.scope === "month" || p.scope === "level")).map((p) => p.year))].sort();
 
   const info = () => state.data.catalog.find((s) => s.id === state.series);
   const label = (id) => (info().indicators.find((i) => i.id === id) || { label: id }).label;
@@ -259,6 +337,49 @@
       datasets: lines, rows, percent: !cumulative };
   }
 
+  const MONTH_NAMES = ["січень", "лютий", "березень", "квітень", "травень", "червень", "липень", "серпень",
+                       "вересень", "жовтень", "листопад", "грудень"];
+  function monthsView(pts, spec) {
+    const inds = spec.indicators;
+    let years = [...new Set(pts.filter((p) => inds.includes(p.category) && p.scope === "month").map((p) => p.year))].sort();
+    if (spec.years.length) years = years.filter((y) => spec.years.includes(y));
+    if (!years.length) throw new Error("для цих показників немає помісячних даних");
+    const last = years[years.length - 1];
+    const pairs = inds.length === 1 ? years.slice(-2).map((y) => [inds[0], y]) : inds.map((i) => [i, last]);
+    const found = pairs.map(([ind, year]) => Object.fromEntries(pick(pts, ind, "month", year).map((p) => [p.date.getUTCMonth() + 1, p])));
+    const months = [...new Set(found.flatMap((f) => Object.keys(f).map(Number)))].sort((a, b) => a - b);
+    if (!months.length) throw new Error("для цих показників немає помісячних даних");
+    const rows = [];
+    let sets = pairs.map(([ind, year], k) => {
+      months.forEach((m) => { const p = found[k][m]; if (p) rows.push(row(p, `${MONTH_NAMES[m - 1]} ${year}`)); });
+      return { label: inds.length === 1 ? String(year) : label(ind), values: months.map((m) => item(found[k][m] || null)) };
+    });
+    if (inds.length === 1) sets = sets.reverse();
+    const shown = [...new Set(pairs.map(([, y]) => y))].sort();
+    return { kind: "bar", title: spec.title || `${info().title} по місяцях`,
+      subtitle: spec.subtitle || `${inds.map(label).join(", ")}; ${shown.join(" і ")}`,
+      labels: months.map((m) => MONTHS[m - 1]), datasets: sets, rows, percent: false };
+  }
+
+  const DERIVED = "пораховано: сума помісячних офіційних даних";
+  function datesView(pts, spec) {
+    const inds = spec.indicators;
+    const chosen = pts.filter((p) => inds.includes(p.category) && (p.scope === "level" || p.scope === "ytd")
+      && p.quote !== DERIVED && (!spec.years.length || spec.years.includes(p.year)));
+    if (!chosen.length) throw new Error("для цих показників немає даних на дату — виберіть інший показник або вигляд");
+    const dates = [...new Set(chosen.map((p) => p.as_of))].sort();
+    const rows = [], sets = [];
+    for (const ind of inds) {
+      const found = Object.fromEntries(chosen.filter((p) => p.category === ind).map((p) => [p.as_of, p]));
+      if (!Object.keys(found).length) continue;
+      sets.push({ label: label(ind), values: dates.map((d) => item(found[d] || null)) });
+      dates.forEach((d) => { if (found[d]) rows.push(row(found[d], `станом на ${ddmm(found[d].date)}.${d.slice(0, 4)}`)); });
+    }
+    return { kind: "bar", title: spec.title || (sets.length === 1 ? sets[0].label : `${info().title}: на дату`),
+      subtitle: spec.subtitle || "за даними на дату публікації",
+      labels: dates.map((d) => `${ddmm(toDate(d))}.${d.slice(0, 4)}`), datasets: sets, rows, percent: false };
+  }
+
   function categorySnapshot(pts, types, year) {
     const cats = Object.keys(types);
     const dates = [...new Set(pts.filter((p) => p.year === year && p.scope === "ytd" && cats.includes(p.category)).map((p) => p.as_of))].sort().reverse();
@@ -294,6 +415,7 @@
   }
 
   function buildChart() {
+    if (channelIdea()) return ideaChart(state.idea);
     const spec = currentSpec();
     if (spec.view !== "types") {
       if (!spec.indicators.length) throw new Error("виберіть хоча б один показник");
@@ -301,7 +423,7 @@
       if (spec.indicators.includes(SHARE) && spec.indicators.length > 1) throw new Error("частку (%) не можна показувати на одному графіку з кількістю — виберіть її окремо");
     }
     const pts = seriesData().points;
-    const chart = { years: yearsView, ytd: ytdView, types: typesView }[spec.view](pts, spec);
+    const chart = { months: monthsView, years: yearsView, ytd: ytdView, types: typesView, dates: datesView }[spec.view](pts, spec);
     const sources = [];
     chart.rows.slice().sort((a, b) => b.as_of.localeCompare(a.as_of)).forEach((r) => {
       if (r.source_url && !sources.some((s) => s.url === r.source_url)) sources.push({ name: r.source_name, url: r.source_url });
@@ -344,7 +466,9 @@
   function draw(chart) {
     $("ftitle").textContent = chart.title;
     $("fsub").textContent = chart.subtitle;
-    $("fnote").textContent = `Дані: ${info().source} · «Технології України»`;
+    $("canvas").parentElement.hidden = chart.kind === "none";
+    if (chart.kind === "none") { if (state.plot) { state.plot.destroy(); state.plot = null; } $("fnote").textContent = ""; return; }
+    $("fnote").textContent = `Дані: ${chart.source || info().source} · «Технології України»`;
     if (state.plot) state.plot.destroy();
     const ctx = $("canvas");
     const common = { responsive: true, maintainAspectRatio: false, animation: false,
@@ -401,7 +525,11 @@
   function renderControls() {
     const s = info();
     $("seriesBox").hidden = state.data.catalog.length < 2;
-    $("series").replaceChildren(...state.data.catalog.map((c) => { const o = el("option", { value: c.id }, c.title); o.selected = c.id === state.series; return o; }));
+    $("series").replaceChildren(...state.data.catalog.map((c) => {
+      const b = el("button", { type: "button", "aria-pressed": String(c.id === state.series) }, c.title);
+      b.addEventListener("click", () => { if (c.id !== state.series) { haptic(); selectSeries(c.id); } });
+      return b;
+    }));
     $("views").replaceChildren(...s.views.map((v) => {
       const b = el("button", { type: "button", "aria-pressed": String(v.id === state.view) }, v.label);
       b.addEventListener("click", () => { state.view = v.id; haptic(); changed(); });
@@ -442,6 +570,10 @@
 
   function changed() {
     renderControls();
+    $("ideaBanner").hidden = !state.idea;
+    if (state.idea) $("ideaTitle").textContent = state.idea.title;
+    $("dataBox").hidden = channelIdea(); $("findingsBox").hidden = channelIdea(); $("seriesBox").hidden ||= channelIdea();
+    $("withSources").parentElement.hidden = channelIdea();
     try {
       state.chart = buildChart();
       $("chartError").hidden = true;
@@ -456,8 +588,15 @@
 
   // ---------- чернетка ----------
   function payload() {
-    return { v: 1, spec: currentSpec(), headline: $("headline").value.trim(), body: $("body").value.trim(),
-             with_sources: $("withSources").checked, ai: $("ai").checked, findings: [...state.chosen] };
+    if (channelIdea()) {
+      // Бот сам перерахує пропозицію за id — зі сторінки йде лише текст
+      return { v: 1, idea: state.idea.id, headline: $("headline").value.trim(), body: $("body").value.trim(),
+               with_sources: false, ai: false, findings: [] };
+    }
+    const p = { v: 1, spec: currentSpec(), headline: $("headline").value.trim(), body: $("body").value.trim(),
+                with_sources: $("withSources").checked, ai: $("ai").checked, findings: [...state.chosen] };
+    if (state.idea) p.idea = state.idea.id;
+    return p;
   }
   const bytes = (s) => new TextEncoder().encode(s).length;
 
@@ -516,12 +655,15 @@
   ["withSources", "ai"].forEach((id) => $(id).addEventListener("change", updateFooter));
   let timer;
   ["title", "subtitle"].forEach((id) => $(id).addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(changed, 400); }));
-  $("series").addEventListener("change", (e) => {
-    state.series = e.target.value; const s = info();
+  function selectSeries(id) {
+    state.idea = null;
+    state.series = id; const s = info();
     state.view = s.default.view; state.indicators = [...s.default.indicators]; state.years = []; state.chosen.clear();
+    $("title").value = ""; $("subtitle").value = "";
     renderFindings(); changed();
-  });
+  }
   $("send").addEventListener("click", send);
+  $("ideaCancel").addEventListener("click", () => { haptic(); cancelIdea(); });
 
   async function start() {
     if (tg) { try { tg.ready(); tg.expand(); if (tg.colorScheme) document.documentElement.dataset.theme = tg.colorScheme; } catch (e) {} }
@@ -539,7 +681,7 @@
     const saved = load();
     const first = state.data.catalog.find((s) => saved && s.id === saved.series) || state.data.catalog[0];
     state.series = first.id;
-    state.view = (saved && saved.view) || first.default.view;
+    state.view = saved && first.views.some((v) => v.id === saved.view) ? saved.view : first.default.view;
     state.indicators = (saved && saved.indicators) || [...first.default.indicators];
     state.years = (saved && saved.years) || [];
     if (saved) {
@@ -549,6 +691,7 @@
       (saved.chosen || []).forEach((t) => state.chosen.add(t));
     }
     $("ui").hidden = false;
+    renderIdeas();
     if (inTelegram && tg.MainButton) {
       $("send").hidden = true;
       tg.MainButton.setText("Надіслати боту");
